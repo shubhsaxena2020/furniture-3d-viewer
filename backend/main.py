@@ -107,7 +107,7 @@ def _run_pipeline_in_process(
         image_paths=photo_paths,
         output_dir=output_dir,
         project_id=project_id,
-        target_faces=100000,
+        target_faces=250000,
     )
     
     # Serialize result to plain dict for transport across process boundary
