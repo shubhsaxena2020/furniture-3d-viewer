@@ -1,0 +1,22 @@
+[project]
+name = "furniture-3d-viewer"
+version = "1.0.0"
+description = "Turn furniture photos into interactive 3D models with color/material customization"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "python-multipart>=0.0.5",
+    "pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "opencv-contrib-python-headless>=4.8.0",
+    "trimesh>=4.0.0",
+    "httpx>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/shubhsaxena2020/furniture-3d-viewer"

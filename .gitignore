@@ -1,0 +1,34 @@
+# Furniture 3D Viewer — .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Uploads and generated models
+uploads/
+static/output/*.glb
+static/output/*.obj
+static/output/*.json
+!static/output/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
