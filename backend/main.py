@@ -23,12 +23,14 @@ from pathlib import Path
 from typing import List, Optional
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
+import time
+import datetime
 
 # Add parent dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -188,13 +190,13 @@ async def get_presets():
 
 
 @app.post("/api/upload")
-async def upload_photos(files: List[UploadFile] = File(...)):
+async def upload_photos(files: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
     """
-    Upload 12-20 photos of furniture from different angles.
-    Returns a project ID that can be used to track processing.
+    Upload photos and automatically start 3D reconstruction.
+    Returns a job ID for status tracking.
     """
     if len(files) < 2:
-        raise HTTPException(status_code=400, detail=f"Need at least 2 photos, got {len(files)}. For best results use 12-20.")
+        raise HTTPException(status_code=400, detail=f"Need at least 2 photos, got {len(files)}. For best results use 8-20.")
 
     if len(files) > 50:
         raise HTTPException(status_code=400, detail=f"Maximum 50 photos, got {len(files)}")
@@ -211,22 +213,28 @@ async def upload_photos(files: List[UploadFile] = File(...)):
         save_path.write_bytes(content)
         saved_paths.append(str(save_path))
 
-    # Create job
+    # Create job and auto-start processing
     job_id = f"job_{project_id}"
     processing_jobs[job_id] = {
-        "status": "uploaded",
+        "status": "queued",
         "progress": 0.0,
-        "message": f"Uploaded {len(saved_paths)} photos",
+        "message": f"Uploaded {len(saved_paths)} photos. Starting 3D reconstruction...",
         "project_id": project_id,
         "photo_paths": saved_paths,
         "result": None,
+        "started_at": None,
+        "completed_at": None,
     }
+
+    # Auto-start processing in background
+    background_tasks.add_task(process_images, job_id)
 
     return {
         "job_id": job_id,
         "project_id": project_id,
         "photos_count": len(saved_paths),
-        "message": f"Uploaded {len(saved_paths)} photos. Use /api/process/{job_id} to start 3D reconstruction.",
+        "status": "processing",
+        "message": f"Uploaded {len(saved_paths)} photos. Reconstruction started automatically.",
     }
 
 
@@ -259,16 +267,27 @@ async def start_processing(job_id: str, background_tasks: BackgroundTasks):
 
 @app.get("/api/status/{job_id}")
 async def get_job_status(job_id: str):
-    """Check the status of a processing job."""
+    """Check the status of a processing job with detailed progress info."""
     if job_id not in processing_jobs:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     job = processing_jobs[job_id]
+    
+    # Calculate elapsed time
+    elapsed = None
+    if job.get("started_at"):
+        if job.get("completed_at"):
+            elapsed = round(job["completed_at"] - job["started_at"], 1)
+        else:
+            elapsed = round(time.time() - job["started_at"], 1)
+
     return {
         "job_id": job_id,
         "status": job["status"],
         "progress": job["progress"],
+        "progress_label": job.get("progress_label", ""),
         "message": job["message"],
+        "elapsed_seconds": elapsed,
         "result": job.get("result"),
     }
 
@@ -366,35 +385,68 @@ async def get_sample_model():
 # ============================================================================
 
 def process_images(job_id: str):
-    """Run photogrammetry in a background thread."""
+    """Run photogrammetry in a background thread with detailed progress updates."""
+    import time as _time
     job = processing_jobs.get(job_id)
     if not job:
         return
 
     try:
+        start_time = _time.time()
+        job["started_at"] = start_time
         job["status"] = "processing"
-        job["progress"] = 0.1
-        job["message"] = "Starting 3D reconstruction..."
+        
+        progress_stages = [
+            (0.05, "Loading images..."),
+            (0.10, "Extracting features..."),
+            (0.20, "Matching features across images..."),
+            (0.35, "Generating dense point cloud..."),
+            (0.50, "Reconstructing surface mesh..."),
+            (0.65, "Subdividing for smooth geometry..."),
+            (0.75, "Transferring textures from photos..."),
+            (0.85, "Optimizing mesh..."),
+            (0.90, "Exporting with PBR materials..."),
+            (0.95, "Finalizing..."),
+        ]
+        stage_idx = [0]
+
+        def update_progress(label, pct):
+            job["progress"] = pct
+            job["progress_label"] = label
+            job["message"] = label
+
+        update_progress("Starting 3D reconstruction...", 0.02)
 
         photo_paths = job["photo_paths"]
         project_id = job["project_id"]
         output_dir = str(OUTPUT_DIR)
 
-        # Update progress
-        job["progress"] = 0.2
-        job["message"] = f"Processing {len(photo_paths)} photos..."
+        update_progress(f"Processing {len(photo_paths)} photos...", 0.05)
 
         # Run photogrammetry
         result = run_photogrammetry(
             image_paths=photo_paths,
             output_dir=output_dir,
             project_id=project_id,
+            progress_callback=update_progress,
         )
+
+        elapsed = round(_time.time() - start_time, 1)
+        job["completed_at"] = _time.time()
 
         if result.success:
             job["status"] = "completed"
             job["progress"] = 1.0
+            job["progress_label"] = "Complete"
             job["message"] = result.message
+            
+            # Get model stats
+            glb_size = 0
+            if result.glb_path:
+                glb_path = Path(result.glb_path)
+                if glb_path.exists():
+                    glb_size = glb_path.stat().st_size
+            
             job["result"] = {
                 "project_id": project_id,
                 "glb_url": f"/output/{project_id}_model.glb",
@@ -402,18 +454,23 @@ def process_images(job_id: str):
                 "n_vertices": len(result.mesh_vertices) if result.mesh_vertices is not None else 0,
                 "n_faces": len(result.mesh_faces) if result.mesh_faces is not None else 0,
                 "n_points": len(result.point_cloud) if result.point_cloud is not None else 0,
-                "n_cameras": len(result.cameras),
+                "glb_size_kb": round(glb_size / 1024, 1),
+                "elapsed_seconds": elapsed,
             }
         else:
             job["status"] = "failed"
             job["progress"] = 0.0
+            job["progress_label"] = "Failed"
             job["message"] = result.message
+            job["completed_at"] = _time.time()
 
     except Exception as e:
         import traceback
         job["status"] = "failed"
         job["progress"] = 0.0
+        job["progress_label"] = "Error"
         job["message"] = f"Error: {str(e)}"
+        job["completed_at"] = _time.time()
         print(f"Processing error for {job_id}:")
         traceback.print_exc()
 

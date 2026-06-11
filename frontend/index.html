@@ -3,405 +3,116 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Furniture 3D Viewer</title>
+<title>Furniture 3D Studio — Photorealistic 3D Product Viewer</title>
 <style>
-  /* ============================================================
-     RESET + BASE
-     ============================================================ */
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  
   :root {
-    --bg-primary: #0d0d0f;
-    --bg-secondary: #151518;
-    --bg-card: #1c1c22;
-    --bg-hover: #26262e;
-    --text-primary: #e8e8ed;
-    --text-secondary: #8b8b9e;
+    --bg: #0a0a0c;
+    --bg2: #121216;
+    --card: #1a1a22;
+    --hover: #24222e;
+    --text: #e4e4ec;
+    --text2: #8888a0;
     --accent: #6c5ce7;
-    --accent-light: #a29bfe;
-    --accent-glow: rgba(108, 92, 231, 0.3);
-    --border: #2a2a35;
-    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --accent2: #a29bfe;
+    --accent-dim: rgba(108,92,231,0.15);
+    --border: #2a2a36;
     --radius: 12px;
-    --radius-sm: 8px;
+    --rsm: 8px;
     --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    --transition: 0.2s ease;
   }
-
-  html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-family: var(--font);
-  }
-
-  /* ============================================================
-     LAYOUT
-     ============================================================ */
-  #app {
-    display: flex;
-    width: 100%;
-    height: 100vh;
-  }
-
-  /* 3D Viewport */
-  #viewport {
-    flex: 1;
-    position: relative;
-    background: radial-gradient(ellipse at center, #14141a 0%, #0a0a0c 100%);
-    overflow: hidden;
-  }
-
-  #viewport canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-
-  /* Viewport overlay controls */
-  #viewport-controls {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 8px;
-    z-index: 10;
-  }
-
-  .vp-btn {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 8px 16px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .vp-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-    border-color: var(--accent);
-  }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); }
+  #app { display: flex; width: 100%; height: 100vh; }
+  #viewport { flex: 1; position: relative; background: radial-gradient(ellipse at center, #12121a 0%, #08080c 100%); overflow: hidden; }
+  #viewport canvas { display: block; width: 100%; height: 100%; }
+  .vp-overlay { position: absolute; top: 20px; left: 20px; z-index: 10; display: flex; gap: 8px; align-items: center; }
+  .vp-model-name { font-size: 13px; font-weight: 600; color: var(--text2); background: rgba(18,18,22,0.8); backdrop-filter: blur(8px); padding: 6px 14px; border-radius: var(--rsm); border: 1px solid var(--border); }
+  .vp-controls { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10; }
+  .vp-btn { background: var(--card); border: 1px solid var(--border); color: var(--text2); padding: 7px 14px; border-radius: var(--rsm); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s ease; display: flex; align-items: center; gap: 5px; }
+  .vp-btn:hover { background: var(--hover); color: var(--text); border-color: var(--accent); }
+  .vp-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent2); }
 
   /* Loading overlay */
-  #loading-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(13,13,15,0.85);
-    z-index: 20;
-    backdrop-filter: blur(8px);
-    transition: opacity 0.5s ease;
-  }
-  #loading-overlay.hidden {
-    opacity: 0;
-    pointer-events: none;
-  }
-  .spinner {
-    width: 48px;
-    height: 48px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
+  #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,10,12,0.85); backdrop-filter: blur(10px); z-index: 30; transition: opacity 0.4s; }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #loading-text {
-    margin-top: 16px;
-    color: var(--text-secondary);
-    font-size: 14px;
-  }
+  #loading-text { margin-top: 14px; color: var(--text2); font-size: 13px; }
 
-  /* Toast notification */
-  #toast {
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    padding: 12px 24px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    color: var(--text-primary);
-    opacity: 0;
-    transition: 0.3s ease;
-    z-index: 100;
-    pointer-events: none;
-    box-shadow: var(--shadow);
-  }
+  /* Toast */
+  #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--card); border: 1px solid var(--border); padding: 10px 22px; border-radius: var(--rsm); font-size: 13px; opacity: 0; transition: 0.25s; z-index: 100; pointer-events: none; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* ============================================================
-     TOOLBAR (Right panel)
-     ============================================================ */
-  #toolbar {
-    width: 340px;
-    min-width: 340px;
-    background: var(--bg-secondary);
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    z-index: 5;
-  }
-  #toolbar::-webkit-scrollbar { width: 4px; }
-  #toolbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  /* Panel */
+  #panel { width: 360px; min-width: 360px; background: var(--bg2); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+  #panel::-webkit-scrollbar { width: 4px; }
+  #panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ph { padding: 18px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .ph h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .ph p { font-size: 11px; color: var(--text2); margin-top: 3px; }
 
-  .toolbar-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .toolbar-header h1 {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.3px;
-  }
-  .toolbar-header p {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-  }
+  .ps { padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .st { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text2); margin-bottom: 10px; }
 
-  .toolbar-section {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .toolbar-section:last-child { border-bottom: none; }
+  /* Upload area */
+  .upload-box { border: 2px dashed var(--border); border-radius: var(--radius); padding: 22px 16px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
+  .upload-box:hover, .upload-box.dragover { border-color: var(--accent); background: var(--accent-dim); }
+  .upload-box input[type=file] { display: none; }
+  .upload-icon { font-size: 28px; margin-bottom: 6px; opacity: 0.5; }
+  .upload-text { font-size: 13px; color: var(--text2); }
+  .upload-hint { font-size: 10px; color: var(--text2); margin-top: 3px; opacity: 0.5; }
+  #file-count { margin-top: 8px; font-size: 12px; color: var(--accent2); display: none; }
 
-  .section-title {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-secondary);
-    margin-bottom: 12px;
-  }
+  /* Progress */
+  #progress-section { display: none; margin-top: 12px; }
+  .pb { width: 100%; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .pf { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width 0.4s ease; border-radius: 3px; }
+  .pt { font-size: 11px; color: var(--text2); margin-top: 5px; display: flex; justify-content: space-between; }
+  .pt-status { color: var(--accent2); }
 
-  /* ============================================================
-     UPLOAD AREA
-     ============================================================ */
-  #upload-area {
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 24px 16px;
-    text-align: center;
-    cursor: pointer;
-    transition: var(--transition);
-    position: relative;
-  }
-  #upload-area:hover, #upload-area.dragover {
-    border-color: var(--accent);
-    background: rgba(108,92,231,0.05);
-  }
-  #upload-area input { display: none; }
-  .upload-icon {
-    font-size: 32px;
-    margin-bottom: 8px;
-    opacity: 0.5;
-  }
-  .upload-text { font-size: 13px; color: var(--text-secondary); }
-  .upload-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.6; }
-  #file-count {
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--accent-light);
-    display: none;
-  }
-  #process-btn {
-    display: none;
-    margin-top: 12px;
-    width: 100%;
-    padding: 10px;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: var(--transition);
-  }
-  #process-btn:hover { background: #5a4bd1; }
-  #process-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Model info */
+  .model-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--rsm); padding: 8px 10px; text-align: center; }
+  .stat-val { font-size: 14px; font-weight: 700; color: var(--text); }
+  .stat-label { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
 
-  #job-progress {
-    display: none;
-    margin-top: 12px;
-  }
-  .progress-bar {
-    width: 100%;
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--accent-light));
-    width: 0%;
-    transition: width 0.5s ease;
-    border-radius: 2px;
-  }
-  .progress-text {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-  }
+  /* Model list */
+  .ml { display: flex; flex-direction: column; gap: 6px; }
+  .mi { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--card); border: 1px solid var(--border); border-radius: var(--rsm); cursor: pointer; transition: 0.15s; }
+  .mi:hover { background: var(--hover); border-color: var(--accent); }
+  .mi.active { border-color: var(--accent); background: var(--accent-dim); }
+  .mi-icon { width: 32px; height: 32px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), #4834d4); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .mi-info { flex: 1; min-width: 0; }
+  .mi-name { font-size: 12px; font-weight: 600; }
+  .mi-detail { font-size: 10px; color: var(--text2); }
+  .mi-action { font-size: 16px; opacity: 0; transition: 0.15s; }
+  .mi:hover .mi-action { opacity: 0.6; }
 
-  /* ============================================================
-     MODEL LIST
-     ============================================================ */
-  #model-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .model-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: var(--transition);
-  }
-  .model-item:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-  }
-  .model-item.active {
-    border-color: var(--accent);
-    background: rgba(108,92,231,0.1);
-  }
-  .model-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, var(--accent), #4834d4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    flex-shrink: 0;
-  }
-  .model-info { flex: 1; min-width: 0; }
-  .model-info .name { font-size: 13px; font-weight: 600; }
-  .model-info .detail { font-size: 11px; color: var(--text-secondary); }
+  /* Colors */
+  .cg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .cs { aspect-ratio: 1; border-radius: var(--rsm); border: 2px solid transparent; cursor: pointer; transition: 0.15s; position: relative; }
+  .cs:hover { transform: scale(1.1); z-index: 1; }
+  .cs.active { border-color: #fff; box-shadow: 0 0 12px var(--accent-dim); }
+  .cs .tip { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); padding: 2px 7px; border-radius: 4px; font-size: 9px; white-space: nowrap; opacity: 0; transition: 0.1s; pointer-events: none; }
+  .cs:hover .tip { opacity: 1; }
 
-  /* ============================================================
-     COLOR SWATCHES
-     ============================================================ */
-  #color-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
-  .color-swatch {
-    aspect-ratio: 1;
-    border-radius: var(--radius-sm);
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition: var(--transition);
-    position: relative;
-    overflow: hidden;
-  }
-  .color-swatch::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 6px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
-  }
-  .color-swatch:hover {
-    transform: scale(1.08);
-    z-index: 1;
-  }
-  .color-swatch.active {
-    border-color: #fff;
-    box-shadow: 0 0 12px var(--accent-glow);
-  }
-  .color-swatch .tooltip {
-    position: absolute;
-    bottom: -24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    white-space: nowrap;
-    opacity: 0;
-    transition: 0.15s ease;
-    pointer-events: none;
-    z-index: 2;
-  }
-  .color-swatch:hover .tooltip { opacity: 1; }
+  /* Materials */
+  .mg { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .mb { padding: 7px 8px; background: var(--card); border: 1px solid var(--border); border-radius: var(--rsm); color: var(--text2); cursor: pointer; font-size: 10px; font-weight: 500; transition: 0.15s; text-align: center; }
+  .mb:hover { background: var(--hover); color: var(--text); }
+  .mb.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent2); }
 
-  /* ============================================================
-     MATERIAL BUTTONS
-     ============================================================ */
-  #material-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-  }
-  .mat-btn {
-    padding: 8px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-    transition: var(--transition);
-    text-align: center;
-  }
-  .mat-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-  .mat-btn.active {
-    background: rgba(108,92,231,0.15);
-    border-color: var(--accent);
-    color: var(--accent-light);
-  }
-  .mat-btn .mat-desc {
-    font-size: 9px;
-    opacity: 0.6;
-    margin-top: 2px;
-  }
+  /* Download buttons */
+  .dl-grid { display: flex; gap: 6px; }
+  .dl-btn { flex: 1; padding: 9px; background: var(--accent); color: #fff; border: none; border-radius: var(--rsm); cursor: pointer; font-size: 12px; font-weight: 600; transition: 0.15s; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .dl-btn:hover { background: #5a4bd1; }
+  .dl-btn.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .dl-btn.secondary:hover { background: var(--hover); }
 
-  /* ============================================================
-     RESPONSIVE
-     ============================================================ */
-  @media (max-width: 768px) {
+  @media (max-width: 860px) {
     #app { flex-direction: column; }
-    #viewport { height: 50vh; }
-    #toolbar {
-      width: 100%;
-      min-width: unset;
-      height: 50vh;
-    }
-    #color-grid { grid-template-columns: repeat(4, 1fr); }
+    #viewport { height: 45vh; }
+    #panel { width: 100%; min-width: unset; height: 55vh; }
   }
 </style>
 </head>
@@ -410,213 +121,184 @@
 <div id="app">
   <!-- 3D Viewport -->
   <div id="viewport">
-    <div id="loading-overlay">
-      <div class="spinner"></div>
-      <div id="loading-text">Loading 3D model...</div>
+    <div class="vp-overlay">
+      <span class="vp-model-name" id="model-name-badge">No model loaded</span>
     </div>
 
-    <div id="viewport-controls">
-      <button class="vp-btn" onclick="resetCamera()">⟲ Reset View</button>
-      <button class="vp-btn" onclick="toggleAutoRotate()">↻ Auto-Rotate</button>
-      <button class="vp-btn" onclick="takeScreenshot()">📷 Screenshot</button>
-      <button class="vp-btn" onclick="toggleWireframe()">◇ Wireframe</button>
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">Loading 3D model</div>
+    </div>
+
+    <div class="vp-controls">
+      <button class="vp-btn" onclick="resetCamera()">⟲ Reset</button>
+      <button class="vp-btn active" onclick="toggleAutoRotate(this)" id="auto-rotate-btn">↻ Rotate</button>
+      <button class="vp-btn" onclick="takeScreenshot()">📷 Snap</button>
+      <button class="vp-btn" onclick="toggleWireframe(this)">◇ Wire</button>
+      <button class="vp-btn" onclick="toggleFloor(this)">⊞ Floor</button>
     </div>
   </div>
 
-  <!-- Toolbar -->
-  <div id="toolbar">
-    <div class="toolbar-header">
+  <!-- Right Panel -->
+  <div id="panel">
+    <div class="ph">
       <h1>Furniture 3D Studio</h1>
-      <p>Upload photos → generate interactive 3D model</p>
+      <p>Upload photos → photorealistic 3D model</p>
     </div>
 
-    <!-- Upload section -->
-    <div class="toolbar-section">
-      <div class="section-title">📸 Upload Photos</div>
-      <div id="upload-area" onclick="document.getElementById('file-input').click()">
+    <!-- Upload -->
+    <div class="ps">
+      <div class="st">📸 Upload Photos</div>
+      <div class="upload-box" id="upload-box">
         <div class="upload-icon">📷</div>
-        <div class="upload-text">Drop 12-20 photos here</div>
-        <div class="upload-hint">Different angles for best results</div>
+        <div class="upload-text">Drop 4–20 photos here</div>
+        <div class="upload-hint">Shoot from different angles for best quality</div>
         <input type="file" id="file-input" accept="image/*" multiple onchange="handleFiles(this.files)">
         <div id="file-count"></div>
-        <button id="process-btn" onclick="startProcessing()">🚀 Generate 3D Model</button>
-        <div id="job-progress">
-          <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
-          <div class="progress-text" id="progress-text">Queued...</div>
+        <div id="progress-section">
+          <div class="pb"><div class="pf" id="pf"></div></div>
+          <div class="pt"><span id="pt-label">Starting...</span><span class="pt-status" id="pt-status"></span></div>
         </div>
       </div>
     </div>
 
-    <!-- Model selector -->
-    <div class="toolbar-section">
-      <div class="section-title">🏷️ Models</div>
-      <div id="model-list"><div class="model-item" style="justify-content:center;color:var(--text-secondary);padding:20px;cursor:default">Loading models...</div></div>
+    <!-- Current Model Info -->
+    <div class="ps" id="model-info-section" style="display:none">
+      <div class="st">📊 Model Stats</div>
+      <div class="model-stats">
+        <div class="stat"><div class="stat-val" id="stat-verts">—</div><div class="stat-label">Vertices</div></div>
+        <div class="stat"><div class="stat-val" id="stat-faces">—</div><div class="stat-label">Faces</div></div>
+        <div class="stat"><div class="stat-val" id="stat-size">—</div><div class="stat-label">Size</div></div>
+        <div class="stat"><div class="stat-val" id="stat-time">—</div><div class="stat-label">Time</div></div>
+      </div>
+    </div>
+
+    <!-- Download -->
+    <div class="ps" id="download-section" style="display:none">
+      <div class="st">⬇️ Download</div>
+      <div class="dl-grid">
+        <a class="dl-btn" id="dl-glb" download>⬇ GLB (Web)</a>
+        <a class="dl-btn secondary" id="dl-obj" download>⬇ OBJ</a>
+      </div>
+    </div>
+
+    <!-- Models -->
+    <div class="ps">
+      <div class="st">🏷️ Models</div>
+      <div class="ml" id="model-list"><div class="mi" style="justify-content:center;color:var(--text2);padding:16px;cursor:default">Loading...</div></div>
     </div>
 
     <!-- Colors -->
-    <div class="toolbar-section">
-      <div class="section-title">🎨 Colors</div>
-      <div id="color-grid"></div>
+    <div class="ps">
+      <div class="st">🎨 Colors</div>
+      <div class="cg" id="color-grid"></div>
     </div>
 
     <!-- Materials -->
-    <div class="toolbar-section">
-      <div class="section-title">🧵 Materials</div>
-      <div id="material-grid"></div>
-    </div>
-
-    <!-- Embed code -->
-    <div class="toolbar-section">
-      <div class="section-title">🔗 Embed</div>
-      <div style="display:flex;gap:6px">
-        <input type="text" id="embed-url" readonly style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-secondary);font-size:12px" value="Select a model first">
-        <button onclick="copyEmbedCode()" style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-secondary);cursor:pointer;font-size:12px">Copy</button>
-      </div>
+    <div class="ps" style="border-bottom:none">
+      <div class="st">🧵 Materials</div>
+      <div class="mg" id="material-grid"></div>
     </div>
   </div>
 </div>
 
 <div id="toast"></div>
 
-<!-- Three.js -->
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-  }
-}
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
 </script>
 
 <script type="module">
-// ========================================================================
-// IMPORTS
-// ========================================================================
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-// ========================================================================
-// STATE
-// ========================================================================
 const state = {
-  scene: null,
-  camera: null,
-  renderer: null,
-  controls: null,
-  currentModel: null,
-  currentMeshGroup: null,
-  autoRotate: true,
-  wireframe: false,
-  currentColor: [200, 180, 160],
-  currentMaterial: 'fabric_linen',
-  currentPresets: { colors: [], materials: [] },
-  modelUrl: null,
-  originalColors: null,
+  scene: null, camera: null, renderer: null, controls: null,
+  modelGroup: null, autoRotate: true, wireframe: false, floor: true,
+  currentColor: [200, 180, 160], currentMaterial: 'fabric_linen',
+  modelUrl: null, modelName: null,
 };
 
-// DOM refs
-const viewport = document.getElementById('viewport');
-const loadingOverlay = document.getElementById('loading-overlay');
-const loadingText = document.getElementById('loading-text');
-const toast = document.getElementById('toast');
+const EL = (id) => document.getElementById(id);
+const vp = EL('viewport');
+const toast = EL('toast');
 
-// ========================================================================
-// INIT THREE.JS
-// ========================================================================
+function showLoading(msg='Loading...') { EL('loading-text').textContent = msg; EL('loading').classList.remove('hidden'); }
+function hideLoading() { EL('loading').classList.add('hidden'); }
+function showToast(msg) { toast.textContent = msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3000); }
+
+// === THREE.JS INIT ===
 function initScene() {
   state.scene = new THREE.Scene();
   state.scene.background = new THREE.Color(0x0d0d0f);
 
-  // Camera
-  state.camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
-  state.camera.position.set(4, 3, 6);
+  state.camera = new THREE.PerspectiveCamera(40, vp.clientWidth/vp.clientHeight, 0.1, 50);
+  state.camera.position.set(3.5, 2.5, 5);
 
-  // Renderer
-  state.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  state.renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  state.renderer = new THREE.WebGLRenderer({ antialias: true });
+  state.renderer.setSize(vp.clientWidth, vp.clientHeight);
+  state.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  state.renderer.toneMappingExposure = 1.2;
+  state.renderer.toneMappingExposure = 1.0;
   state.renderer.outputColorSpace = THREE.SRGBColorSpace;
-  viewport.appendChild(state.renderer.domElement);
+  vp.appendChild(state.renderer.domElement);
 
-  // Controls
   state.controls = new OrbitControls(state.camera, state.renderer.domElement);
   state.controls.enableDamping = true;
   state.controls.dampingFactor = 0.08;
   state.controls.autoRotate = true;
-  state.controls.autoRotateSpeed = 1.5;
-  state.controls.minDistance = 1.5;
-  state.controls.maxDistance = 20;
-  state.controls.target.set(0, 0.2, 0);
+  state.controls.autoRotateSpeed = 1.8;
+  state.controls.minDistance = 1.2;
+  state.controls.maxDistance = 15;
+  state.controls.target.set(0, 0.3, 0);
 
   // Lighting
-  setupLighting();
+  const hemi = new THREE.HemisphereLight(0x8a7ab5, 0x1a1a2e, 0.6);
+  state.scene.add(hemi);
 
-  // Environment (simple gradient via hemisphere)
-  const hemiLight = new THREE.HemisphereLight(0x8a7ab5, 0x1a1a2e, 0.8);
-  state.scene.add(hemiLight);
+  const key = new THREE.DirectionalLight(0xffeedd, 2.5);
+  key.position.set(5, 8, 5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  state.scene.add(key);
 
-  // Ground plane (infinite shadow catcher)
-  const groundGeo = new THREE.PlaneGeometry(20, 20);
-  const groundMat = new THREE.ShadowMaterial({ opacity: 0.3, color: 0x000000 });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.5;
-  ground.receiveShadow = true;
-  state.scene.add(ground);
+  const fill = new THREE.DirectionalLight(0x8888ff, 0.6);
+  fill.position.set(-4, 3, -3);
+  state.scene.add(fill);
 
-  // Grid helper
-  const gridHelper = new THREE.GridHelper(10, 20, 0x333355, 0x222244);
-  gridHelper.position.y = -0.5;
-  state.scene.add(gridHelper);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+  rim.position.set(0, -1, -6);
+  state.scene.add(rim);
 
-  // Resize
-  window.addEventListener('resize', onResize);
+  const amb = new THREE.AmbientLight(0x404060, 0.3);
+  state.scene.add(amb);
 
+  // Floor
+  const floorGeo = new THREE.PlaneGeometry(15, 15);
+  const floorMat = new THREE.ShadowMaterial({ opacity: 0.4, color: 0x000000 });
+  state.floorMesh = new THREE.Mesh(floorGeo, floorMat);
+  state.floorMesh.rotation.x = -Math.PI/2;
+  state.floorMesh.position.y = -0.5;
+  state.floorMesh.receiveShadow = true;
+  state.scene.add(state.floorMesh);
+
+  const grid = new THREE.GridHelper(10, 24, 0x333355, 0x222244);
+  grid.position.y = -0.5;
+  state.scene.add(grid);
+
+  window.addEventListener('resize', ()=>{
+    const w = vp.clientWidth, h = vp.clientHeight;
+    state.camera.aspect = w/h;
+    state.camera.updateProjectionMatrix();
+    state.renderer.setSize(w, h);
+  });
   animate();
-}
-
-function setupLighting() {
-  // Key light (warm)
-  const keyLight = new THREE.DirectionalLight(0xffeedd, 2.0);
-  keyLight.position.set(5, 8, 5);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.width = 1024;
-  keyLight.shadow.mapSize.height = 1024;
-  keyLight.shadow.camera.near = 0.1;
-  keyLight.shadow.camera.far = 20;
-  keyLight.shadow.camera.left = -5;
-  keyLight.shadow.camera.right = 5;
-  keyLight.shadow.camera.top = 5;
-  keyLight.shadow.camera.bottom = -5;
-  state.scene.add(keyLight);
-
-  // Fill light (cool)
-  const fillLight = new THREE.DirectionalLight(0x8888ff, 0.8);
-  fillLight.position.set(-4, 3, -3);
-  state.scene.add(fillLight);
-
-  // Rim light
-  const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
-  rimLight.position.set(0, -1, -6);
-  state.scene.add(rimLight);
-
-  // Ambient fill
-  const ambient = new THREE.AmbientLight(0x404060, 0.4);
-  state.scene.add(ambient);
-}
-
-function onResize() {
-  const w = viewport.clientWidth;
-  const h = viewport.clientHeight;
-  state.camera.aspect = w / h;
-  state.camera.updateProjectionMatrix();
-  state.renderer.setSize(w, h);
 }
 
 function animate() {
@@ -625,583 +307,305 @@ function animate() {
   state.renderer.render(state.scene, state.camera);
 }
 
-// ========================================================================
-// LOADING / TOAST
-// ========================================================================
-function showLoading(msg = 'Loading...') {
-  loadingText.textContent = msg;
-  loadingOverlay.classList.remove('hidden');
-}
-function hideLoading() {
-  loadingOverlay.classList.add('hidden');
-}
-function showToast(msg) {
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3000);
-}
-
-// ========================================================================
-// MODEL LOADING
-// ========================================================================
-export async function loadModel(url, color = state.currentColor, materialName = state.currentMaterial) {
+// === MODEL LOADING ===
+async function loadModel(url, name='Model') {
   showLoading('Loading 3D model...');
-
-  // Clear old model
-  if (state.currentMeshGroup) {
-    state.scene.remove(state.currentMeshGroup);
-    state.currentMeshGroup.traverse(child => {
-      if (child.isMesh) {
-        child.geometry?.dispose();
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material?.dispose();
-        }
-      }
+  if (state.modelGroup) {
+    state.scene.remove(state.modelGroup);
+    state.modelGroup.traverse(c => {
+      if (c.isMesh) { c.geometry?.dispose(); if (Array.isArray(c.material)) c.material.forEach(m=>m.dispose()); else c.material?.dispose(); }
     });
-    state.currentMeshGroup = null;
   }
 
   try {
-    const loader = new GLTFLoader();
     const gltf = await new Promise((resolve, reject) => {
-      loader.load(url, resolve, undefined, reject);
+      new GLTFLoader().load(url, resolve, undefined, reject);
     });
-
     const model = gltf.scene || gltf;
-    state.currentMeshGroup = model;
-    state.currentModel = model;
+    state.modelGroup = model;
 
-    // Center and scale
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = maxDim > 0 ? 2.0 / maxDim : 1;
+    const scale = maxDim > 0 ? 2.2 / maxDim : 1;
 
     model.position.sub(center);
     model.position.multiplyScalar(scale);
-    model.position.y += 0.2;
-
+    model.position.y += 0.3;
     model.scale.multiplyScalar(scale);
-
-    // Enable shadows
-    model.traverse(child => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
+    model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
 
     state.scene.add(model);
+    state.modelUrl = url;
+    state.modelName = name;
+    EL('model-name-badge').textContent = name;
 
-    // Apply initial material
-    applyColor(color);
-    applyMaterial(materialName);
+    // Apply current material
+    applyMaterial(state.currentMaterial);
+    applyColor(state.currentColor);
 
     hideLoading();
     showToast('Model loaded');
-  } catch (err) {
-    console.error('Load error:', err);
+  } catch (e) {
     hideLoading();
-
-    // Try fallback: load raw mesh from local
-    try {
-      await loadFallbackModel();
-    } catch (e2) {
-      showToast('Failed to load model: ' + err.message);
-    }
+    showToast('Failed to load model');
   }
 }
 
-async function loadFallbackModel() {
-  // Generate a simple geometric sofa as fallback
-  showLoading('Generating preview model...');
-  await new Promise(r => setTimeout(r, 100));
-
-  const group = new THREE.Group();
-
-  // Seat
-  const seatMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(
-      state.currentColor[0]/255, state.currentColor[1]/255, state.currentColor[2]/255
-    ),
-    roughness: 0.7,
-    metalness: 0.0,
-  });
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 1.0), seatMat);
-  seat.position.set(0, 0.35, 0);
-  seat.castShadow = true;
-  seat.receiveShadow = true;
-  group.add(seat);
-
-  // Back rest
-  const backMat = seatMat.clone();
-  const back = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 0.2), backMat);
-  back.position.set(0, 0.7, -0.4);
-  back.castShadow = true;
-  group.add(back);
-
-  // Left armrest
-  const armMat = seatMat.clone();
-  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.8), armMat);
-  leftArm.position.set(-1.0, 0.45, 0);
-  leftArm.castShadow = true;
-  group.add(leftArm);
-
-  // Right armrest
-  const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.8), armMat);
-  rightArm.position.set(1.0, 0.45, 0);
-  rightArm.castShadow = true;
-  group.add(rightArm);
-
-  // Cushion
-  const cushionMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setRGB(
-      state.currentColor[0]/255 * 0.9, state.currentColor[1]/255 * 0.9, state.currentColor[2]/255 * 0.9
-    ),
-    roughness: 0.8,
-    metalness: 0.0,
-  });
-  const cushion = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.15, 0.8), cushionMat);
-  cushion.position.set(0, 0.58, 0);
-  cushion.castShadow = true;
-  group.add(cushion);
-
-  // Legs
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.6 });
-  const legPositions = [[-0.8, -0.35], [0.8, -0.35], [-0.8, 0.35], [0.8, 0.35]];
-  for (const [x, z] of legPositions) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.25, 8), legMat);
-    leg.position.set(x, -0.05, z);
-    leg.castShadow = true;
-    group.add(leg);
-  }
-
-  state.currentMeshGroup = group;
-  state.currentModel = group;
-  state.scene.add(group);
-  state.currentMeshGroup.userData.isFallback = true;
-
-  hideLoading();
-  showToast('Preview model loaded');
-}
-
-// ========================================================================
-// COLOR APPLICATION
-// ========================================================================
+// === COLOR/MATERIAL ===
 export function applyColor(rgb) {
   state.currentColor = rgb;
-  const r = rgb[0] / 255;
-  const g = rgb[1] / 255;
-  const b = rgb[2] / 255;
-  const color = new THREE.Color().setRGB(r, g, b);
-
-  if (!state.currentMeshGroup) return;
-
-  state.currentMeshGroup.traverse(child => {
-    if (child.isMesh) {
-      const mat = child.material;
-      if (Array.isArray(mat)) {
-        mat.forEach(m => { if (m.color) m.color.copy(color); });
-      } else if (mat.color) {
-        mat.color.copy(color);
-      }
+  const color = new THREE.Color().setRGB(rgb[0]/255, rgb[1]/255, rgb[2]/255);
+  if (!state.modelGroup) return;
+  state.modelGroup.traverse(c => {
+    if (c.isMesh) {
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      mats.forEach(m => { if (m.color) m.color.copy(color); });
     }
   });
 }
 
-// ========================================================================
-// MATERIAL APPLICATION
-// ========================================================================
-const MATERIAL_CONFIG = {
-  fabric_linen:      { roughness: 0.85, metalness: 0.0, clearcoat: 0.0 },
-  fabric_velvet:     { roughness: 0.50, metalness: 0.0, clearcoat: 0.2 },
-  leather_matte:     { roughness: 0.70, metalness: 0.0, clearcoat: 0.1 },
-  leather_gloss:     { roughness: 0.30, metalness: 0.0, clearcoat: 0.4 },
-  wood_oak:          { roughness: 0.60, metalness: 0.0, clearcoat: 0.1 },
-  wood_walnut:       { roughness: 0.55, metalness: 0.0, clearcoat: 0.15 },
-  metal_brushed:     { roughness: 0.40, metalness: 0.8, clearcoat: 0.0 },
-  metal_polished:    { roughness: 0.10, metalness: 0.95, clearcoat: 0.0 },
-  plastic_matte:     { roughness: 0.90, metalness: 0.0, clearcoat: 0.0 },
-  plastic_gloss:     { roughness: 0.20, metalness: 0.0, clearcoat: 0.5 },
-  stone_marble:      { roughness: 0.30, metalness: 0.0, clearcoat: 0.3 },
-  concrete:          { roughness: 0.90, metalness: 0.0, clearcoat: 0.0 },
-  ceramic:           { roughness: 0.15, metalness: 0.0, clearcoat: 0.6 },
-  carbon_fiber:      { roughness: 0.30, metalness: 0.6, clearcoat: 0.2 },
+const MAT_CONFIG = {
+  fabric_linen:{r:.85,m:0,cc:0}, fabric_velvet:{r:.5,m:0,cc:.2},
+  leather_matte:{r:.7,m:0,cc:.1}, leather_gloss:{r:.3,m:0,cc:.4},
+  wood_oak:{r:.6,m:0,cc:.1}, wood_walnut:{r:.55,m:0,cc:.15},
+  metal_brushed:{r:.4,m:.8,cc:0}, metal_polished:{r:.1,m:.95,cc:0},
+  plastic_matte:{r:.9,m:0,cc:0}, plastic_gloss:{r:.2,m:0,cc:.5},
+  stone_marble:{r:.3,m:0,cc:.3}, concrete:{r:.9,m:0,cc:0},
+  ceramic:{r:.15,m:0,cc:.6}, carbon_fiber:{r:.3,m:.6,cc:.2},
 };
 
 export function applyMaterial(name) {
   state.currentMaterial = name;
-  const config = MATERIAL_CONFIG[name] || MATERIAL_CONFIG.fabric_linen;
-
-  if (!state.currentMeshGroup) return;
-
-  state.currentMeshGroup.traverse(child => {
-    if (child.isMesh) {
-      const mat = child.material;
-      const mats = Array.isArray(mat) ? mat : [mat];
+  const cfg = MAT_CONFIG[name] || MAT_CONFIG.fabric_linen;
+  if (!state.modelGroup) return;
+  state.modelGroup.traverse(c => {
+    if (c.isMesh) {
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
       mats.forEach(m => {
-        if (m.roughness !== undefined) m.roughness = config.roughness;
-        if (m.metalness !== undefined) m.metalness = config.metalness;
-        if (m.clearcoat !== undefined) m.clearcoat = config.clearcoat;
-        m.needsUpdate = true;
+        if (m.roughness !== undefined) m.roughness = cfg.r;
+        if (m.metalness !== undefined) m.metalness = cfg.m;
       });
     }
   });
 }
 
-// ========================================================================
-// VIEWPORT CONTROLS (exposed globally)
-// ========================================================================
-window.resetCamera = function() {
-  state.camera.position.set(4, 3, 6);
-  state.controls.target.set(0, 0.2, 0);
-  state.controls.update();
+// === VIEWPORT CONTROLS ===
+window.resetCamera = () => { state.camera.position.set(3.5,2.5,5); state.controls.target.set(0,0.3,0); state.controls.update(); };
+window.toggleAutoRotate = (btn) => { state.controls.autoRotate = !state.controls.autoRotate; btn.classList.toggle('active'); showToast(state.controls.autoRotate ? 'Rotation ON' : 'Rotation OFF'); };
+window.toggleWireframe = (btn) => {
+  state.wireframe = !state.wireframe; btn.classList.toggle('active');
+  if (state.modelGroup) state.modelGroup.traverse(c => { if (c.isMesh) { const mats = Array.isArray(c.material)?c.material:[c.material]; mats.forEach(m=>{if(m.wireframe!==undefined)m.wireframe=state.wireframe;}); }});
 };
-
-window.loadModel = loadModel;
-window.applyColor = applyColor;
-window.applyMaterial = applyMaterial;
-
-window.toggleAutoRotate = function() {
-  state.controls.autoRotate = !state.controls.autoRotate;
-  showToast(state.controls.autoRotate ? 'Auto-rotate ON' : 'Auto-rotate OFF');
+window.toggleFloor = (btn) => {
+  state.floor = !state.floor; btn.classList.toggle('active');
+  if (state.floorMesh) state.floorMesh.visible = state.floor;
+  state.scene.children.forEach(c => { if (c.isGridHelper) c.visible = state.floor; });
 };
-
-window.toggleWireframe = function() {
-  state.wireframe = !state.wireframe;
-  if (state.currentMeshGroup) {
-    state.currentMeshGroup.traverse(child => {
-      if (child.isMesh) {
-        const mat = child.material;
-        const mats = Array.isArray(mat) ? mat : [mat];
-        mats.forEach(m => { if (m.wireframe !== undefined) m.wireframe = state.wireframe; });
-      }
-    });
-  }
-  showToast(state.wireframe ? 'Wireframe ON' : 'Wireframe OFF');
-};
-
-window.takeScreenshot = function() {
+window.takeScreenshot = () => {
   state.renderer.render(state.scene, state.camera);
-  const link = document.createElement('a');
-  link.download = 'furniture-screenshot.png';
-  link.href = state.renderer.domElement.toDataURL('image/png');
-  link.click();
+  const a = document.createElement('a');
+  a.download = 'furniture-3d.png';
+  a.href = state.renderer.domElement.toDataURL('image/png');
+  a.click();
   showToast('Screenshot saved');
 };
 
-// ========================================================================
-// API INTERACTION
-// ========================================================================
-const API_BASE = window.location.origin;
+// === API ===
+async function fetchJSON(url) { try { const r = await fetch(url); return await r.json(); } catch { return null; } }
 
-async function fetchModels() {
+// === UPLOAD + AUTO-PROCESS ===
+let selectedFiles = [];
+let activeJobId = null;
+
+window.handleFiles = function(files) {
+  selectedFiles = Array.from(files);
+  EL('file-count').textContent = `📎 ${selectedFiles.length} photos selected`;
+  EL('file-count').style.display = 'block';
+  startProcessing();
+};
+
+async function startProcessing() {
+  if (!selectedFiles.length) return;
+  const pf = EL('pf'), pt = EL('pt-label'), ps = EL('progress-section'), pts = EL('pt-status');
+  ps.style.display = 'block';
+  pf.style.width = '2%';
+  pt.textContent = 'Uploading photos...';
+  pts.textContent = '';
+
   try {
-    const res = await fetch(`${API_BASE}/api/models`);
-    const data = await res.json();
-    return data.models || [];
-  } catch { return []; }
+    const formData = new FormData();
+    for (const f of selectedFiles) formData.append('files', f);
+
+    const upload = await fetch('/api/upload', { method: 'POST', body: formData });
+    if (!upload.ok) throw new Error('Upload failed');
+    const data = await upload.json();
+
+    activeJobId = data.job_id;
+    pt.textContent = 'Reconstruction started...';
+    pf.style.width = '5%';
+
+    // Poll progress
+    let prevMsg = '';
+    for (let i = 0; i < 300; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const status = await fetchJSON(`/api/status/${activeJobId}`);
+      if (!status) continue;
+
+      const pct = Math.max(5, Math.round(status.progress * 100));
+      pf.style.width = `${Math.min(pct, 98)}%`;
+
+      if (status.message && status.message !== prevMsg) {
+        pt.textContent = status.message;
+        prevMsg = status.message;
+      }
+      if (status.elapsed_seconds) pts.textContent = `${status.elapsed_seconds.toFixed(0)}s`;
+
+      if (status.status === 'completed') {
+        pf.style.width = '100%';
+        pt.textContent = '✅ Complete!';
+        pts.textContent = '';
+        showToast('3D model ready!');
+        activeJobId = null;
+
+        // Load the new model
+        if (status.result?.glb_url) {
+          const name = `Model (${status.result.n_vertices?.toLocaleString() || '?'} verts)`;
+          await loadModel(status.result.glb_url, name);
+          
+          // Update stats
+          EL('model-info-section').style.display = 'block';
+          EL('stat-verts').textContent = status.result.n_vertices?.toLocaleString() || '—';
+          EL('stat-faces').textContent = status.result.n_faces?.toLocaleString() || '—';
+          EL('stat-size').textContent = status.result.glb_size_kb ? `${status.result.glb_size_kb} KB` : '—';
+          EL('stat-time').textContent = status.result.elapsed_seconds ? `${status.result.elapsed_seconds}s` : '—';
+          
+          // Set download links
+          EL('dl-glb').href = status.result.glb_url;
+          EL('dl-glb').setAttribute('download', `${status.result.project_id}.glb`);
+          EL('dl-obj').href = status.result.obj_url || '#';
+          EL('dl-obj').setAttribute('download', `${status.result.project_id}.obj`);
+          EL('download-section').style.display = 'block';
+
+          // Refresh model list
+          refreshModels();
+        }
+        return;
+      } else if (status.status === 'failed') {
+        pf.style.width = '0%';
+        pt.textContent = `❌ ${status.message}`;
+        showToast('Processing failed');
+        activeJobId = null;
+        return;
+      }
+    }
+    pt.textContent = '⏰ Taking longer than expected...';
+  } catch (e) {
+    pt.textContent = `❌ ${e.message}`;
+    showToast('Error: ' + e.message);
+    activeJobId = null;
+  }
 }
 
-async function fetchPresets() {
-  try {
-    const res = await fetch(`${API_BASE}/api/presets`);
-    const data = await res.json();
-    return data;
-  } catch { return { colors: [], materials: [] }; }
-}
-
-// ========================================================================
-// UI SETUP
-// ========================================================================
-function buildColorGrid(colors) {
-  const grid = document.getElementById('color-grid');
-  grid.innerHTML = '';
-  colors.forEach((c, i) => {
-    const swatch = document.createElement('div');
-    swatch.className = 'color-swatch' + (i === 0 ? ' active' : '');
-    swatch.style.background = c.hex;
-    swatch.innerHTML = `<span class="tooltip">${c.name}</span>`;
-    swatch.onclick = () => {
-      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-      swatch.classList.add('active');
-      applyColor(c.rgb);
-    };
-    grid.appendChild(swatch);
-  });
-}
-
-function buildMaterialGrid(materials) {
-  const grid = document.getElementById('material-grid');
-  grid.innerHTML = '';
-
-  // Material key mapping
-  const matKeyMap = {
-    'Fabric (Linen)': 'fabric_linen',
-    'Fabric (Velvet)': 'fabric_velvet',
-    'Leather (Matte)': 'leather_matte',
-    'Leather (Gloss)': 'leather_gloss',
-    'Wood (Oak)': 'wood_oak',
-    'Wood (Walnut)': 'wood_walnut',
-    'Metal (Brushed)': 'metal_brushed',
-    'Metal (Polished)': 'metal_polished',
-    'Plastic (Matte)': 'plastic_matte',
-    'Plastic (Gloss)': 'plastic_gloss',
-    'Stone / Marble': 'stone_marble',
-    'Concrete': 'concrete',
-    'Ceramic': 'ceramic',
-    'Carbon Fiber': 'carbon_fiber',
-  };
-
-  materials.forEach((m, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'mat-btn' + (i === 0 ? ' active' : '');
-    const key = matKeyMap[m.name] || 'fabric_linen';
-    btn.innerHTML = `${m.name}<div class="mat-desc">${m.description}</div>`;
-    btn.onclick = () => {
-      document.querySelectorAll('.mat-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      applyMaterial(key);
-    };
-    grid.appendChild(btn);
-  });
-}
-
-function buildModelList(models) {
-  const list = document.getElementById('model-list');
-  if (!models.length) {
-    list.innerHTML = `<div class="model-item" style="justify-content:center;color:var(--text-secondary);padding:20px;cursor:default">No models yet — upload photos!</div>`;
+// === MODEL LIST ===
+async function refreshModels() {
+  const data = await fetchJSON('/api/models');
+  const list = EL('model-list');
+  if (!data || !data.models?.length) {
+    list.innerHTML = '<div class="mi" style="justify-content:center;color:var(--text2);padding:16px;cursor:default">No models yet — upload photos!</div>';
     return;
   }
   list.innerHTML = '';
-  models.forEach(m => {
+  data.models.forEach(m => {
     const item = document.createElement('div');
-    item.className = 'model-item';
+    item.className = 'mi';
+    const isActive = state.modelUrl === (m.glb || m.glb_url);
+    if (isActive) item.classList.add('active');
     item.innerHTML = `
-      <div class="model-icon">🪑</div>
-      <div class="model-info">
-        <div class="name">${m.name || m.id}</div>
-        <div class="detail">${m.vertices?.toLocaleString() || '?'} verts · ${m.faces?.toLocaleString() || '?'} faces</div>
+      <div class="mi-icon">🪑</div>
+      <div class="mi-info">
+        <div class="mi-name">${m.name || m.id}</div>
+        <div class="mi-detail">${(m.vertices||0).toLocaleString()} verts · ${(m.faces||0).toLocaleString()} faces</div>
       </div>
+      <div class="mi-action">▶</div>
     `;
     item.onclick = () => {
-      document.querySelectorAll('.model-item').forEach(n => n.classList.remove('active'));
+      document.querySelectorAll('.mi').forEach(n => n.classList.remove('active'));
       item.classList.add('active');
       const url = m.glb || m.glb_url;
-      if (url) {
-        state.modelUrl = url;
-        loadModel(url);
-        document.getElementById('embed-url').value = `${window.location.origin}/?model=${encodeURIComponent(url)}`;
-      }
+      if (url) loadModel(url, m.name || m.id);
     };
     list.appendChild(item);
   });
 }
 
-// ========================================================================
-// FILE UPLOAD
-// ========================================================================
-let selectedFiles = [];
-window.handleFiles = function(files) {
-  selectedFiles = Array.from(files);
-  const count = document.getElementById('file-count');
-  count.textContent = `📎 ${selectedFiles.length} photos selected`;
-  count.style.display = 'block';
-  document.getElementById('process-btn').style.display = 'block';
-};
-
-window.startProcessing = async function() {
-  if (!selectedFiles.length) return;
-
-  const btn = document.getElementById('process-btn');
-  const progress = document.getElementById('job-progress');
-  const fill = document.getElementById('progress-fill');
-  const ptext = document.getElementById('progress-text');
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Uploading...';
-  progress.style.display = 'block';
-  fill.style.width = '0%';
-  ptext.textContent = 'Uploading photos...';
-
-  try {
-    const formData = new FormData();
-    for (const file of selectedFiles) {
-      formData.append('files', file);
-    }
-
-    const uploadRes = await fetch(`${API_BASE}/api/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!uploadRes.ok) {
-      const err = await uploadRes.json();
-      throw new Error(err.detail || 'Upload failed');
-    }
-
-    const uploadData = await uploadRes.json();
-    const jobId = uploadData.job_id;
-    btn.textContent = '⏳ Processing...';
-    ptext.textContent = 'Starting 3D reconstruction...';
-    fill.style.width = '10%';
-
-    // Start processing
-    const processRes = await fetch(`${API_BASE}/api/process/${jobId}`, { method: 'POST' });
-    if (!processRes.ok) throw new Error('Failed to start processing');
-
-    // Poll for completion
-    let attempts = 0;
-    const maxAttempts = 600; // 5 minutes
-
-    while (attempts < maxAttempts) {
-      await new Promise(r => setTimeout(r, 3000));
-      const statusRes = await fetch(`${API_BASE}/api/status/${jobId}`);
-      const status = await statusRes.json();
-
-      fill.style.width = `${Math.min(status.progress * 100, 95)}%`;
-
-      if (status.status === 'completed') {
-        fill.style.width = '100%';
-        ptext.textContent = '✅ Complete!';
-        btn.textContent = '🚀 Generate 3D Model';
-        btn.disabled = false;
-        showToast('3D model generated!');
-        // Refresh model list and load new model
-        const models = await fetchModels();
-        buildModelList(models);
-        // Auto-load the new model
-        if (status.result?.glb_url) {
-          loadModel(status.result.glb_url);
-          document.getElementById('embed-url').value = `${window.location.origin}/?model=${encodeURIComponent(status.result.glb_url)}`;
-        }
-        return;
-      } else if (status.status === 'failed') {
-        ptext.textContent = `❌ Failed: ${status.message}`;
-        btn.textContent = '🚀 Generate 3D Model';
-        btn.disabled = false;
-        showToast('Processing failed: ' + status.message);
-        return;
-      } else {
-        ptext.textContent = status.message || 'Processing...';
-      }
-      attempts++;
-    }
-
-    ptext.textContent = '⏰ Timeout — model may still be processing. Check /api/status';
-    btn.textContent = '🚀 Generate 3D Model';
-    btn.disabled = false;
-
-  } catch (err) {
-    console.error('Upload error:', err);
-    ptext.textContent = `❌ Error: ${err.message}`;
-    btn.textContent = '🚀 Generate 3D Model';
-    btn.disabled = false;
-    showToast('Error: ' + err.message);
-  }
-};
-
-// ========================================================================
-// EMBED
-// ========================================================================
-window.copyEmbedCode = function() {
-  const url = document.getElementById('embed-url').value;
-  if (!url || url === 'Select a model first') return;
-  const embedCode = `<iframe src="${window.location.origin}/?model=${encodeURIComponent(state.modelUrl || '')}" width="100%" height="500" frameborder="0" allowfullscreen></iframe>`;
-  navigator.clipboard.writeText(embedCode).then(() => {
-    showToast('Embed code copied!');
-  }).catch(() => {
-    // Fallback
-    const input = document.getElementById('embed-url');
-    input.select();
-    document.execCommand('copy');
-    showToast('Embed URL copied!');
+// === BUILD UI ===
+function buildColorGrid(colors) {
+  const g = EL('color-grid');
+  g.innerHTML = '';
+  (colors || []).forEach((c, i) => {
+    const s = document.createElement('div');
+    s.className = 'cs' + (i === 0 ? ' active' : '');
+    s.style.background = c.hex;
+    s.innerHTML = `<span class="tip">${c.name}</span>`;
+    s.onclick = () => { g.querySelectorAll('.cs').forEach(x=>x.classList.remove('active')); s.classList.add('active'); applyColor(c.rgb); };
+    g.appendChild(s);
   });
-};
-
-// ========================================================================
-// DRAG & DROP
-// ========================================================================
-const uploadArea = document.getElementById('upload-area');
-uploadArea.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadArea.classList.add('dragover');
-});
-uploadArea.addEventListener('dragleave', () => {
-  uploadArea.classList.remove('dragover');
-});
-uploadArea.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadArea.classList.remove('dragover');
-  const files = e.dataTransfer.files;
-  if (files.length) handleFiles(files);
-});
-
-// ========================================================================
-// URL PARAMETER: load model from URL
-// ========================================================================
-function loadFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const modelUrl = params.get('model');
-  if (modelUrl) {
-    loadModel(modelUrl);
-    document.getElementById('embed-url').value = modelUrl;
-  }
 }
 
-// ========================================================================
-// INIT
-// ========================================================================
+function buildMaterialGrid(materials) {
+  const g = EL('material-grid');
+  g.innerHTML = '';
+  const keyMap = {'Fabric (Linen)':'fabric_linen','Fabric (Velvet)':'fabric_velvet','Leather (Matte)':'leather_matte','Leather (Gloss)':'leather_gloss','Wood (Oak)':'wood_oak','Wood (Walnut)':'wood_walnut','Metal (Brushed)':'metal_brushed','Metal (Polished)':'metal_polished','Plastic (Matte)':'plastic_matte','Plastic (Gloss)':'plastic_gloss','Stone / Marble':'stone_marble','Concrete':'concrete','Ceramic':'ceramic','Carbon Fiber':'carbon_fiber'};
+  (materials || []).forEach((m, i) => {
+    const b = document.createElement('button');
+    b.className = 'mb' + (i === 0 ? ' active' : '');
+    b.textContent = m.name;
+    b.onclick = () => { g.querySelectorAll('.mb').forEach(x=>x.classList.remove('active')); b.classList.add('active'); applyMaterial(keyMap[m.name] || 'fabric_linen'); };
+    g.appendChild(b);
+  });
+}
+
+// === DRAG & DROP ===
+const ub = EL('upload-box');
+ub.addEventListener('dragover', e => { e.preventDefault(); ub.classList.add('dragover'); });
+ub.addEventListener('dragleave', () => ub.classList.remove('dragover'));
+ub.addEventListener('drop', e => { e.preventDefault(); ub.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+
+// === INIT ===
 async function init() {
   initScene();
 
-  // Load presets
-  const presets = await fetchPresets();
-  state.currentPresets = presets;
-
-  if (presets.colors?.length) buildColorGrid(presets.colors);
-  if (presets.materials?.length) buildMaterialGrid(presets.materials);
-
-  // Load models
-  const models = await fetchModels();
-  buildModelList(models);
-
-  // Load from URL or sample
-  if (window.location.search.includes('model=')) {
-    loadFromUrl();
-  } else if (models.length) {
-    const firstModel = models[0];
-    state.modelUrl = firstModel.glb;
-    loadModel(firstModel.glb || firstModel.glb_url);
-    document.getElementById('embed-url').value = `${window.location.origin}/?model=${encodeURIComponent(firstModel.glb || firstModel.glb_url)}`;
-    // Mark first as active
-    const items = document.querySelectorAll('.model-item');
-    if (items.length) items[0].classList.add('active');
-  } else {
-    // Try sample endpoint
-    try {
-      const res = await fetch(`${API_BASE}/api/sample`);
-      const data = await res.json();
-      if (data.glb_url) {
-        state.modelUrl = data.glb_url;
-        loadModel(data.glb_url);
-        document.getElementById('embed-url').value = `${window.location.origin}/?model=${encodeURIComponent(data.glb_url)}`;
-      }
-    } catch {
-      loadFallbackModel();
-    }
+  const presets = await fetchJSON('/api/presets');
+  if (presets) {
+    buildColorGrid(presets.colors);
+    buildMaterialGrid(presets.materials);
   }
+
+  const data = await fetchJSON('/api/models');
+  const models = data?.models || [];
+
+  if (models.length) {
+    const first = models[models.length - 1]; // Latest
+    const url = first.glb || first.glb_url;
+    if (url) {
+      await loadModel(url, first.name || first.id);
+      EL('dl-glb').href = url;
+      EL('dl-glb').setAttribute('download', `${first.id}.glb`);
+      EL('download-section').style.display = 'block';
+    }
+  } else {
+    // Load sample
+    const sample = await fetchJSON('/api/sample');
+    if (sample?.glb_url) await loadModel(sample.glb_url, 'Sample Sofa');
+  }
+
+  refreshModels();
 }
 
-// Start when DOM ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
 </script>
 </body>
 </html>
