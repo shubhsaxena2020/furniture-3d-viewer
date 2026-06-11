@@ -1,0 +1,37 @@
+# Node modules (if any)
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+
+# Test data
+test_photos*/
+test_photos_real*/
+
+# COLMAP artifacts
+static/output/sfm/
+
+# Cache directories
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

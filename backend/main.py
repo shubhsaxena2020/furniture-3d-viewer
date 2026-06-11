@@ -12,26 +12,21 @@ Run: python -m backend.main
 Or:  uvicorn backend.main:app --reload
 """
 
-import os
-import sys
 import json
 import uuid
-import shutil
-import zipfile
+import os
+import sys
 import asyncio
 from pathlib import Path
 from typing import List, Optional
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import time
-import datetime
-
 # Add parent dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -56,7 +51,7 @@ SAMPLE_MODELS_DIR.mkdir(exist_ok=True)
 # ----
 # Import photogrammetry
 # ----
-from backend.photogrammetry import run_photogrammetry
+from backend.photogrammetry import run_photogrammetry  # noqa: E402
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
@@ -396,19 +391,7 @@ def process_images(job_id: str):
         job["started_at"] = start_time
         job["status"] = "processing"
         
-        progress_stages = [
-            (0.05, "Loading images..."),
-            (0.10, "Extracting features..."),
-            (0.20, "Matching features across images..."),
-            (0.35, "Generating dense point cloud..."),
-            (0.50, "Reconstructing surface mesh..."),
-            (0.65, "Subdividing for smooth geometry..."),
-            (0.75, "Transferring textures from photos..."),
-            (0.85, "Optimizing mesh..."),
-            (0.90, "Exporting with PBR materials..."),
-            (0.95, "Finalizing..."),
-        ]
-        stage_idx = [0]
+
 
         def update_progress(label, pct):
             job["progress"] = pct

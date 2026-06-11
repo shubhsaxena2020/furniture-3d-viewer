@@ -1,34 +1,39 @@
-# Furniture 3D Viewer — .gitignore
+# Test data
+test_photos/
+test_photos_real/
+real_test_photos_v3/
+
+# Uploaded photos (session data)
+uploads/
+
+# COLMAP artifacts
+static/output/sfm/
+static/output/colmap_test_*/
+static/output/*_model.*
+static/output/*_metadata.json
+
+# Coverage files
+.coverage
+htmlcov/
+
+# Node modules
+node_modules/
 
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
+.venv/
 *.egg-info/
 dist/
 build/
-*.egg
 
-# Virtual environment
-.venv/
-venv/
-env/
-
-# Uploads and generated models
-uploads/
-static/output/*.glb
-static/output/*.obj
-static/output/*.json
-!static/output/.gitkeep
-
-# OS
-.DS_Store
-Thumbs.db
+# Environment
+.env
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# Logs
-*.log
+# OS
+.DS_Store
+Thumbs.db
