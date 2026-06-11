@@ -94,7 +94,7 @@ class TestPhotogrammetryEdgeCases:
     
     def test_texture_transfer_no_faces(self):
         """Texture transfer with empty faces array."""
-        from backend.photogrammetry import transfer_textures
+        from backend.photogrammetry import transfer_textures_advanced as transfer_textures
         
         verts = np.random.randn(10, 3)
         faces = np.zeros((0, 3), dtype=np.int64)

@@ -183,7 +183,7 @@ class TestReconstructMeshEdgeCases:
     """Edge cases for mesh reconstruction."""
     
     def test_mesh_no_points(self):
-        from backend.photogrammetry import reconstruct_mesh
+        from backend.photogrammetry import reconstruct_mesh_advanced as reconstruct_mesh
         pts = np.zeros((0, 3))
         cols = np.zeros((0, 3), dtype=np.uint8)
         v, f, c = reconstruct_mesh(pts, cols)
@@ -191,7 +191,7 @@ class TestReconstructMeshEdgeCases:
         assert len(f) == 0
     
     def test_mesh_few_points(self):
-        from backend.photogrammetry import reconstruct_mesh
+        from backend.photogrammetry import reconstruct_mesh_advanced as reconstruct_mesh
         pts = np.random.randn(3, 3) * 0.1
         cols = np.random.randint(0, 255, (3, 3), dtype=np.uint8)
         v, f, c = reconstruct_mesh(pts, cols)
@@ -199,7 +199,7 @@ class TestReconstructMeshEdgeCases:
         assert len(f) == 0  # Can't form a tetrahedron with 3 points
     
     def test_mesh_planar_points(self):
-        from backend.photogrammetry import reconstruct_mesh
+        from backend.photogrammetry import reconstruct_mesh_advanced as reconstruct_mesh
         # All points on a plane
         pts = np.random.randn(100, 3) * 0.5
         pts[:, 2] = 0  # Z = 0

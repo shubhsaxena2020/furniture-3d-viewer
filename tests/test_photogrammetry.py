@@ -105,7 +105,7 @@ class TestPhotogrammetryCore:
         assert all(m.distance >= 0 for m in matches)
 
     def test_reconstruct_mesh_minimal_points(self):
-        from backend.photogrammetry import reconstruct_mesh
+        from backend.photogrammetry import reconstruct_mesh_advanced as reconstruct_mesh
         points = np.random.randn(5, 3) * 0.1
         colors = np.random.randint(0, 255, (5, 3), dtype=np.uint8)
         verts, faces, vcols = reconstruct_mesh(points, colors, target_faces=1000)
@@ -113,7 +113,7 @@ class TestPhotogrammetryCore:
         assert len(faces) >= 0
 
     def test_reconstruct_mesh_target_faces(self):
-        from backend.photogrammetry import reconstruct_mesh
+        from backend.photogrammetry import reconstruct_mesh_advanced as reconstruct_mesh
         np.random.seed(42)
         # Generate a sphere-like point cloud
         n_pts = 200
@@ -186,7 +186,7 @@ class TestTextureTransfer:
     """Tests for texture transfer quality."""
 
     def test_texture_basic(self):
-        from backend.photogrammetry import transfer_textures
+        from backend.photogrammetry import transfer_textures_advanced as transfer_textures
         # Simple box mesh
         verts = np.array([
             [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
@@ -204,7 +204,7 @@ class TestTextureTransfer:
         assert result.dtype == np.uint8
 
     def test_texture_single_image(self):
-        from backend.photogrammetry import transfer_textures
+        from backend.photogrammetry import transfer_textures_advanced as transfer_textures
         verts = np.random.randn(10, 3) * 0.5
         faces = np.array([[0, 1, 2], [1, 2, 3], [4, 5, 6]], dtype=np.int64)
         images = [np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)]
@@ -213,7 +213,7 @@ class TestTextureTransfer:
         assert result.shape == (10, 3)
 
     def test_texture_empty_images(self):
-        from backend.photogrammetry import transfer_textures
+        from backend.photogrammetry import transfer_textures_advanced as transfer_textures
         verts = np.random.randn(10, 3)
         faces = np.array([[0, 1, 2]], dtype=np.int64)
         vcols = np.random.randint(0, 255, (10, 3), dtype=np.uint8)
