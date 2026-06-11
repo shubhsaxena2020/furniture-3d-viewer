@@ -118,9 +118,17 @@ def run_colmap_sfm(image_paths: List[str], output_dir: str) -> Tuple:
     Run COLMAP Structure-from-Motion on a set of images.
     Optimized for furniture photos with aggressive feature extraction.
     Returns (reconstructions, point_cloud, point_colors, message)
+    
+    NOTE: COLMAP runs in-process via pycolmap. If it segfaults (common with
+    arbitrary user photos), the entire process goes down. We wrap it in a 
+    cautious try/except and validate all inputs first.
     """
     if not PYCOLMAP_AVAILABLE:
         return [], None, None, "pycolmap not installed"
+    
+    # Input validation
+    if len(image_paths) < 2:
+        return [], None, None, "Need at least 2 images for SfM"
 
 
     sfm_dir = Path(output_dir) / "sfm"
@@ -174,8 +182,9 @@ def run_colmap_sfm(image_paths: List[str], output_dir: str) -> Tuple:
             options=options
         )
     except Exception as e:
-        print(f"    COLMAP SfM failed: {e}")
-        return [], None, None, str(e)
+        err_str = str(e)
+        print(f"    COLMAP SfM failed: {err_str}")
+        return [], None, None, f"COLMAP SfM failed: {err_str}"
 
     if not maps:
         return [], None, None, "No COLMAP reconstructions"
@@ -571,13 +580,21 @@ def reconstruct_mesh_advanced(points, colors, target_faces=100000):
     verts, faces, vcols = result
     
     # Subdivide to reach target face count (up to 100K+)
+    # MEMORY GUARD: cap subdivision iterations based on input size
+    # Each subdivision quadruples faces: small inputs need fewer passes
     if len(faces) > 0 and len(faces) < target_faces and TRIMESH_AVAILABLE:
         try:
             sub = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
             current = len(faces)
             iterations = 0
-            max_iters = 6
+            # At most 6 iterations, but also cap final face count to 500K max
+            max_iters = min(6, max(2, int(np.log2(target_faces / max(current, 1)) / 2) + 1))
+            max_iters = min(max_iters, 6)  # hard cap
             while current < target_faces and iterations < max_iters:
+                # Guard: if subdividing would produce > 500K faces, stop
+                if current * 4 > 500000:
+                    print(f"    Memory guard: stopping subdivision at {current} faces (would exceed 500K)")
+                    break
                 sub = sub.subdivide()
                 current = len(sub.faces)
                 iterations += 1
@@ -914,13 +931,23 @@ def estimate_material(images):
     """Analyze images to estimate roughness and metalness for PBR materials."""
     if not images:
         return 0.7, 0.0
-    roi = images[0][
-        images[0].shape[0] // 4: 3 * images[0].shape[0] // 4,
-        images[0].shape[1] // 4: 3 * images[0].shape[1] // 4,
-    ]
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
-    tex_std = float(np.std(gray))
-    lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    try:
+        img = images[0]
+        h, w = img.shape[:2]
+        # Guard: image must be at least 20px in both dimensions for ROI + Laplacian
+        if h < 20 or w < 20:
+            return 0.7, 0.0
+        roi = img[
+            max(0, h // 4): min(h, 3 * h // 4),
+            max(0, w // 4): min(w, 3 * w // 4),
+        ]
+        if roi.shape[0] < 5 or roi.shape[1] < 5:
+            return 0.7, 0.0
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
+        tex_std = float(np.std(gray))
+        lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    except Exception:
+        return 0.7, 0.0
 
     if lap_var > 300 and tex_std > 40:
         return 0.3, 0.7  # Metal
@@ -977,9 +1004,16 @@ def run_photogrammetry(image_paths: List[str],
     colmap_image_dir.mkdir(parents=True, exist_ok=True)
     
     for p in image_paths:
+        if not os.path.exists(p):
+            warnings_list.append(f"File not found: {p}")
+            continue
         img = cv2.imread(str(p))
         if img is None:
             warnings_list.append(f"Could not read {p}")
+            continue
+        h, w = img.shape[:2]
+        if h < 5 or w < 5:
+            warnings_list.append(f"Image too small: {p} ({w}x{h})")
             continue
         # Resize to uniform dimensions for consistent camera model
         if img.shape[1] != target_size[0] or img.shape[0] != target_size[1]:

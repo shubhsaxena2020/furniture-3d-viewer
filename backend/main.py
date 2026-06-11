@@ -17,16 +17,28 @@ import uuid
 import os
 import sys
 import asyncio
+import logging
+import traceback
 from pathlib import Path
 from typing import List, Optional
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, TimeoutError
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import time
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("furniture-3d-viewer")
+
 # Add parent dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -53,31 +65,212 @@ SAMPLE_MODELS_DIR.mkdir(exist_ok=True)
 # ----
 from backend.photogrammetry import run_photogrammetry  # noqa: E402
 
-@asynccontextmanager
-async def app_lifespan(app: FastAPI):
-    """Startup: generate sample model, mount frontend."""
-    # Mount frontend AFTER API routes so they take priority
-    if FRONTEND_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-    
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(executor, generate_sample_model, str(OUTPUT_DIR), "sample_sofa")
-    yield
-
+# Global processing timeout (seconds) — protect against hung COLMAP
+PROCESSING_TIMEOUT = 300  # 5 minutes max per job
 
 # Track processing jobs
 processing_jobs: dict = {}
 
-# Thread executor for CPU-bound work
-executor = ThreadPoolExecutor(max_workers=2)
+# Process executor for CPU-bound work — ProcessPoolExecutor isolates crashes
+# (including COLMAP segfaults) from the main server process
+executor = ProcessPoolExecutor(max_workers=2)
 
-# ----
+
+# ============================================================================
+# Exception handler — catch all unhandled exceptions
+# ============================================================================
+
+class ProcessingError(Exception):
+    """Raised when photogrammetry processing fails."""
+    pass
+
+
+# ============================================================================
+# Background photogrammetry processing (runs in a subprocess)
+# ============================================================================
+
+def _run_pipeline_in_process(
+    photo_paths: list,
+    output_dir: str,
+    project_id: str,
+) -> dict:
+    """
+    Run photogrammetry in a separate process for crash isolation.
+    This function runs in a ProcessPoolExecutor worker.
+    """
+    # Import inside the subprocess to avoid pickle issues
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent.parent))
+    
+    # Run pipeline (no progress callback in subprocess)
+    result = run_photogrammetry(
+        image_paths=photo_paths,
+        output_dir=output_dir,
+        project_id=project_id,
+        target_faces=100000,
+    )
+    
+    # Serialize result to plain dict for transport across process boundary
+    glb_size = 0
+    if result.glb_path:
+        glb_path = Path(result.glb_path)
+        if glb_path.exists():
+            glb_size = glb_path.stat().st_size
+    
+    return {
+        "success": result.success,
+        "message": result.message,
+        "warnings": result.warnings,
+        "glb_path": result.glb_path,
+        "obj_path": result.obj_path,
+        "n_vertices": len(result.mesh_vertices) if result.mesh_vertices is not None else 0,
+        "n_faces": len(result.mesh_faces) if result.mesh_faces is not None else 0,
+        "n_points": len(result.point_cloud) if result.point_cloud is not None else 0,
+        "glb_size_kb": round(glb_size / 1024, 1),
+    }
+
+
+def process_images(job_id: str):
+    """Run photogrammetry in a background process with timeout."""
+    job = processing_jobs.get(job_id)
+    if not job:
+        logger.warning(f"Job {job_id} not found for processing")
+        return
+
+    start_time = time.time()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        job["started_at"] = start_time
+        job["status"] = "processing"
+        job["progress"] = 0.05
+        job["progress_label"] = "Starting 3D reconstruction..."
+        job["message"] = "Processing in background..."
+
+        photo_paths = job["photo_paths"]
+        project_id = job["project_id"]
+        output_dir = str(OUTPUT_DIR)
+
+        logger.info(f"Job {job_id}: Starting pipeline on {len(photo_paths)} photos")
+
+        # Run in subprocess with timeout
+        job["progress"] = 0.10
+        job["progress_label"] = "Running 3D reconstruction..."
+
+        future = executor.submit(
+            _run_pipeline_in_process,
+            photo_paths,
+            output_dir,
+            project_id,
+        )
+
+        # Wait with timeout
+        try:
+            result_dict = future.result(timeout=PROCESSING_TIMEOUT)
+        except TimeoutError:
+            logger.error(f"Job {job_id}: Processing timed out after {PROCESSING_TIMEOUT}s")
+            future.cancel()
+            job["status"] = "failed"
+            job["progress"] = 0.0
+            job["progress_label"] = "Timeout"
+            job["message"] = f"Processing timed out after {PROCESSING_TIMEOUT}s. Try with fewer or smaller photos."
+            job["completed_at"] = time.time()
+            return
+        except Exception as e:
+            logger.error(f"Job {job_id}: Subprocess error: {e}")
+            traceback.print_exc()
+            job["status"] = "failed"
+            job["progress"] = 0.0
+            job["progress_label"] = "Error"
+            job["message"] = f"Processing error: {str(e)}"
+            job["completed_at"] = time.time()
+            return
+
+        elapsed = round(time.time() - start_time, 1)
+        job["completed_at"] = time.time()
+
+        if result_dict.get("success"):
+            job["status"] = "completed"
+            job["progress"] = 1.0
+            job["progress_label"] = "Complete"
+            job["message"] = result_dict.get("message", "Success!")
+
+            job["result"] = {
+                "project_id": project_id,
+                "glb_url": f"/output/{project_id}_model.glb",
+                "obj_url": f"/output/{project_id}_model.obj" if result_dict.get("obj_path") else None,
+                "n_vertices": result_dict.get("n_vertices", 0),
+                "n_faces": result_dict.get("n_faces", 0),
+                "n_points": result_dict.get("n_points", 0),
+                "glb_size_kb": result_dict.get("glb_size_kb", 0),
+                "elapsed_seconds": elapsed,
+            }
+            logger.info(
+                f"Job {job_id}: Completed in {elapsed}s — "
+                f"{result_dict.get('n_faces', 0):,} faces, "
+                f"{result_dict.get('glb_size_kb', 0)}KB GLB"
+            )
+        else:
+            job["status"] = "failed"
+            job["progress"] = 0.0
+            job["progress_label"] = "Failed"
+            job["message"] = result_dict.get("message", "Unknown error")
+            logger.warning(f"Job {job_id}: Failed — {job['message']}")
+
+    except Exception as e:
+        logger.error(f"Job {job_id}: Unhandled error: {e}")
+        traceback.print_exc()
+        job["status"] = "failed"
+        job["progress"] = 0.0
+        job["progress_label"] = "Error"
+        job["message"] = f"Unhandled error: {str(e)}"
+        job["completed_at"] = time.time()
+    finally:
+        loop.close()
+
+
+# ============================================================================
+# Lifespan
+# ============================================================================
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """Startup: mount frontend."""
+    # Mount frontend AFTER API routes so they take priority
+    if FRONTEND_DIR.exists():
+        try:
+            app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+            logger.info(f"Mounted frontend from {FRONTEND_DIR}")
+        except Exception as e:
+            logger.warning(f"Failed to mount frontend: {e}")
+
+    # Generate sample model in background (don't block startup)
+    loop = asyncio.get_event_loop()
+    try:
+        await asyncio.wait_for(
+            loop.run_in_executor(None, generate_sample_model, str(OUTPUT_DIR), "sample_sofa"),
+            timeout=30.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Sample model generation timed out (non-critical)")
+    except Exception as e:
+        logger.warning(f"Sample model generation failed (non-critical): {e}")
+
+    yield
+    # Shutdown
+    executor.shutdown(wait=False)
+    logger.info("Server shutting down")
+
+
+# ============================================================================
 # FastAPI app
-# ----
+# ============================================================================
+
 app = FastAPI(
     title="Furniture 3D Viewer API",
     description="Upload furniture photos and generate interactive 3D models with color/material customization",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=app_lifespan,
 )
 
@@ -88,6 +281,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Global exception handler — convert all unhandled exceptions to 500
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+    )
 
 
 # ============================================================================
@@ -172,7 +376,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "version": "1.0.0", "model": "Furniture 3D Viewer"}
+    return {"status": "ok", "version": "1.0.1", "model": "Furniture 3D Viewer"}
 
 
 @app.get("/api/presets")
@@ -196,6 +400,11 @@ async def upload_photos(files: List[UploadFile] = File(...), background_tasks: B
     if len(files) > 50:
         raise HTTPException(status_code=400, detail=f"Maximum 50 photos, got {len(files)}")
 
+    # Validate file sizes (reject files > 20MB each)
+    for f in files:
+        if f.size and f.size > 20 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"File {f.filename} is too large ({f.size // 1024 // 1024}MB). Max: 20MB per file.")
+
     project_id = str(uuid.uuid4())[:8]
     project_dir = UPLOADS_DIR / project_id
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -204,9 +413,14 @@ async def upload_photos(files: List[UploadFile] = File(...), background_tasks: B
     for i, file in enumerate(files):
         ext = os.path.splitext(file.filename or f"photo_{i}.jpg")[1] or ".jpg"
         save_path = project_dir / f"photo_{i:03d}{ext}"
-        content = await file.read()
-        save_path.write_bytes(content)
+        try:
+            content = await file.read()
+            save_path.write_bytes(content)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read uploaded file {file.filename}: {e}")
         saved_paths.append(str(save_path))
+
+    logger.info(f"Uploaded {len(saved_paths)} photos to project {project_id}")
 
     # Create job and auto-start processing
     job_id = f"job_{project_id}"
@@ -267,7 +481,7 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     job = processing_jobs[job_id]
-    
+
     # Calculate elapsed time
     elapsed = None
     if job.get("started_at"):
@@ -375,92 +589,10 @@ async def get_sample_model():
     }
 
 
-# ============================================================================
-# Background processing
-# ============================================================================
-
-def process_images(job_id: str):
-    """Run photogrammetry in a background thread with detailed progress updates."""
-    import time as _time
-    job = processing_jobs.get(job_id)
-    if not job:
-        return
-
-    try:
-        start_time = _time.time()
-        job["started_at"] = start_time
-        job["status"] = "processing"
-        
-
-
-        def update_progress(label, pct):
-            job["progress"] = pct
-            job["progress_label"] = label
-            job["message"] = label
-
-        update_progress("Starting 3D reconstruction...", 0.02)
-
-        photo_paths = job["photo_paths"]
-        project_id = job["project_id"]
-        output_dir = str(OUTPUT_DIR)
-
-        update_progress(f"Processing {len(photo_paths)} photos...", 0.05)
-
-        # Run photogrammetry
-        result = run_photogrammetry(
-            image_paths=photo_paths,
-            output_dir=output_dir,
-            project_id=project_id,
-            progress_callback=update_progress,
-        )
-
-        elapsed = round(_time.time() - start_time, 1)
-        job["completed_at"] = _time.time()
-
-        if result.success:
-            job["status"] = "completed"
-            job["progress"] = 1.0
-            job["progress_label"] = "Complete"
-            job["message"] = result.message
-            
-            # Get model stats
-            glb_size = 0
-            if result.glb_path:
-                glb_path = Path(result.glb_path)
-                if glb_path.exists():
-                    glb_size = glb_path.stat().st_size
-            
-            job["result"] = {
-                "project_id": project_id,
-                "glb_url": f"/output/{project_id}_model.glb",
-                "obj_url": f"/output/{project_id}_model.obj" if result.obj_path else None,
-                "n_vertices": len(result.mesh_vertices) if result.mesh_vertices is not None else 0,
-                "n_faces": len(result.mesh_faces) if result.mesh_faces is not None else 0,
-                "n_points": len(result.point_cloud) if result.point_cloud is not None else 0,
-                "glb_size_kb": round(glb_size / 1024, 1),
-                "elapsed_seconds": elapsed,
-            }
-        else:
-            job["status"] = "failed"
-            job["progress"] = 0.0
-            job["progress_label"] = "Failed"
-            job["message"] = result.message
-            job["completed_at"] = _time.time()
-
-    except Exception as e:
-        import traceback
-        job["status"] = "failed"
-        job["progress"] = 0.0
-        job["progress_label"] = "Error"
-        job["message"] = f"Error: {str(e)}"
-        job["completed_at"] = _time.time()
-        print(f"Processing error for {job_id}:")
-        traceback.print_exc()
-
-
 def generate_sample_model(output_dir: str, sample_id: str = "sample_sofa") -> bool:
     """
     Generate a geometric sample sofa/chair model using trimesh primitives.
+    Wrapped in comprehensive error handling for robustness.
     """
     try:
         import trimesh
@@ -496,8 +628,6 @@ def generate_sample_model(output_dir: str, sample_id: str = "sample_sofa") -> bo
 
         # Combine all parts
         all_parts = [seat, back, left_arm, right_arm, cushion] + legs
-
-        # Simulate rounded corners by subdividing
         combined = trimesh.util.concatenate(all_parts)
 
         # Smooth the mesh slightly (subdivide)
@@ -526,12 +656,11 @@ def generate_sample_model(output_dir: str, sample_id: str = "sample_sofa") -> bo
         meta_path = Path(output_dir) / f"{sample_id}_metadata.json"
         meta_path.write_text(json.dumps(meta, indent=2))
 
-        print(f"  Generated sample sofa: {output_path}")
+        logger.info(f"Generated sample sofa: {output_path}")
         return True
 
     except Exception as e:
-        print(f"  Failed to generate sample model: {e}")
-        import traceback
+        logger.warning(f"Failed to generate sample model: {e}")
         traceback.print_exc()
         return False
 
@@ -542,13 +671,14 @@ def generate_sample_model(output_dir: str, sample_id: str = "sample_sofa") -> bo
 
 if __name__ == "__main__":
     import uvicorn
+    logger.info("Starting Furniture 3D Viewer server...")
     print("""
-╔══════════════════════════════════════════════════════╗
-║        Furniture 3D Viewer - Backend Server          ║
-║                                                      ║
-║  API: http://localhost:8777/api                      ║
-║  View: http://localhost:8777/                        ║
-║  Docs: http://localhost:8777/docs                    ║
-╚══════════════════════════════════════════════════════╝
+    ╔══════════════════════════════════════════════════════╗
+    ║        Furniture 3D Viewer - Backend Server          ║
+    ║                                                      ║
+    ║  API: http://localhost:8777/api                      ║
+    ║  View: http://localhost:8777/                        ║
+    ║  Docs: http://localhost:8777/docs                    ║
+    ╚══════════════════════════════════════════════════════╝
     """)
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8777, reload=False)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8777, reload=False, log_level="info")
