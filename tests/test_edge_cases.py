@@ -7,7 +7,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pytest
 import numpy as np
 import cv2
 
@@ -95,14 +94,14 @@ class TestPhotogrammetryEdgeCases:
     
     def test_texture_transfer_no_faces(self):
         """Texture transfer with empty faces array."""
-        from backend.photogrammetry import transfer_textures_advanced
+        from backend.photogrammetry import transfer_textures
         
         verts = np.random.randn(10, 3)
         faces = np.zeros((0, 3), dtype=np.int64)
         images = [np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)]
         vcols = np.random.randint(0, 255, (10, 3), dtype=np.uint8)
         
-        result = transfer_textures_advanced(verts, faces, images, vcols)
+        result = transfer_textures(verts, faces, images, vcols)
         assert result.shape == (10, 3)
     
     def test_densify_single_point(self):
@@ -129,7 +128,7 @@ class TestPhotogrammetryEdgeCases:
                 assert len(result[1]) >= 4
         except Exception as e:
             # Any exception should be caught and handled at the caller level
-            # In the actual pipeline, reconstruct_mesh_advanced wraps this in try/except
+            # In the actual pipeline, reconstruct_mesh wraps this in try/except
             print(f"  _build_projection correctly raised: {e}")
 
 
