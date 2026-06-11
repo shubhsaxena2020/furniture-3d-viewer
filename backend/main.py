@@ -27,6 +27,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 
 # Add parent dir to path for imports
@@ -55,6 +56,18 @@ SAMPLE_MODELS_DIR.mkdir(exist_ok=True)
 # ----
 from backend.photogrammetry import run_photogrammetry
 
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    """Startup: generate sample model, mount frontend."""
+    # Mount frontend AFTER API routes so they take priority
+    if FRONTEND_DIR.exists():
+        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, generate_sample_model, str(OUTPUT_DIR), "sample_sofa")
+    yield
+
+
 # Track processing jobs
 processing_jobs: dict = {}
 
@@ -68,6 +81,7 @@ app = FastAPI(
     title="Furniture 3D Viewer API",
     description="Upload furniture photos and generate interactive 3D models with color/material customization",
     version="1.0.0",
+    lifespan=app_lifespan,
 )
 
 app.add_middleware(
@@ -480,21 +494,6 @@ def generate_sample_model(output_dir: str, sample_id: str = "sample_sofa") -> bo
         import traceback
         traceback.print_exc()
         return False
-
-
-# ============================================================================
-# Generate sample models on startup
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Generate sample model on first startup."""
-    # Mount frontend AFTER API routes so they take priority
-    if FRONTEND_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-    
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(executor, generate_sample_model, str(OUTPUT_DIR), "sample_sofa")
 
 
 # ============================================================================
